@@ -155,9 +155,18 @@
       <select id="team-filter">
         <option value="All">All Teams</option>
       </select>
+      <label for="pos-filter">Position:</label>
+      <select id="pos-filter">
+        <option value="All">All Positions</option>
+        <option value="PG">PG</option>
+        <option value="SG">SG</option>
+        <option value="SF">SF</option>
+        <option value="PF">PF</option>
+        <option value="C">C</option>
+      </select>
 
       <label for="fga-slider">Minimum Total FGA:</label>
-      <input type="range" id="fga-slider" min="0" max="21" value="5">
+      <input type="range" id="fga-slider" min="1" max="21" value="5">
       <span id="fga-value">5</span>
     </div>
     <div class="search-bar">
@@ -176,11 +185,11 @@
         <div class="legend">
           <div class="legend-item">
             <div class="legend-color" style="background-color: blue;"></div>
-            <div class="legend-text">Field Goals Made (FGM)</div>
+            <div class="legend-text">Average Field Goals Made</div>
           </div>
           <div class="legend-item">
             <div class="legend-color" style="background-color: orange;"></div>
-            <div class="legend-text">Field Goal Percentage (FG%)</div>
+            <div class="legend-text">Average Field Goal Percentage (FG%)</div>
           </div>
         </div>
       </div>
@@ -206,7 +215,10 @@
         .append("g")
         .attr("transform", `translate(200,200)`);
 
-      d3.csv("static/nba_shooting_stats.csv").then(data => {
+      // d3.csv("static/nba_shooting_stats.csv").then(data => {
+      // d3.csv("static/nba_merged_data.csv").then(data => {
+      d3.csv("static/nba_data.csv").then(data => {
+
         console.log("Data loaded successfully:", data);
 
         data.forEach(d => {
@@ -217,7 +229,7 @@
           d["20_24_ft_fgpct"] = +d["20_24_ft_fgpct"];
           d["25_29_ft_fgpct"] = +d["25_29_ft_fgpct"];
 
-          d.total_fga = +d.lt_5_ft_fga + +d["5_9_ft_fga"] + +d["10_14_ft_fga"] + +d["15_19_ft_fga"] + +d["20_24_ft_fga"] + +d["25_29_ft_fga"];
+          d.total_fga = +d.lt_5_ft_fga + +d["fga_5_9_ft"] + +d["fga_10_14_ft"] + +d["fga_15_19_ft"] + +d["fga_20_24_ft"] + +d["fga_25_29_ft"];
         });
 
         const teams = [...new Set(data.map(d => d.team))].sort();
@@ -225,6 +237,9 @@
         teams.forEach(team => {
           teamFilter.append("option").attr("value", team).text(team);
         });
+
+        const posFilter = d3.select("#pos-filter");
+        posFilter.on("change", updateVisualizations);
 
         const fgaSlider = d3.select("#fga-slider");
         const fgaValue = d3.select("#fga-value");
@@ -245,14 +260,16 @@
 
         function updateVisualizations() {
           const selectedTeam = teamFilter.property("value");
+          const selectedPos = posFilter.property("value"); // Get selected position
           const minFGA = +fgaSlider.property("value");
           const searchQuery = playerSearch.property("value").toLowerCase();
 
           const filteredData = data.filter(d => {
             const matchesTeam = selectedTeam === "All" || d.team === selectedTeam;
+            const matchesPos = selectedPos === "All" || d.Pos === selectedPos; // Filter by position
             const matchesFGA = d.total_fga >= minFGA;
             const matchesPlayer = d.player.toLowerCase().includes(searchQuery);
-            return matchesTeam && matchesFGA && matchesPlayer;
+            return matchesTeam && matchesPos && matchesFGA && matchesPlayer;
           });
 
           console.log("Filtered data:", filteredData);
@@ -359,12 +376,12 @@
             radarSvg.selectAll("*").remove();
 
             const radarData = [
-              { axis: "<5ft", value: player.lt_5_ft_fgpct, fgm: +player.lt_5_ft_fgm },
-              { axis: "5-9ft", value: player["5_9_ft_fgpct"], fgm: +player["5_9_ft_fgm"] },
-              { axis: "10-14ft", value: player["10_14_ft_fgpct"], fgm: +player["10_14_ft_fgm"] },
-              { axis: "15-19ft", value: player["15_19_ft_fgpct"], fgm: +player["15_19_ft_fgm"] },
-              { axis: "20-24ft", value: player["20_24_ft_fgpct"], fgm: +player["20_24_ft_fgm"] },
-              { axis: "25-29ft", value: player["25_29_ft_fgpct"], fgm: +player["25_29_ft_fgm"] }
+              { axis: "<5ft", value: player.lt_5_ft_fgpct, fga: +player.lt_5_ft_fga, fgm: +player.lt_5_ft_fgm },
+              { axis: "5-9ft", value: player["5_9_ft_fgpct"], fga: +player["fga_5_9_ft"], fgm: +player["5_9_ft_fgm"] },
+              { axis: "10-14ft", value: player["10_14_ft_fgpct"], fga: +player["fga_10_14_ft"], fgm: +player["10_14_ft_fgm"] },
+              { axis: "15-19ft", value: player["15_19_ft_fgpct"], fga: +player["fga_15_19_ft"], fgm: +player["15_19_ft_fgm"] },
+              { axis: "20-24ft", value: player["20_24_ft_fgpct"], fga: +player["fga_20_24_ft"], fgm: +player["20_24_ft_fgm"] },
+              { axis: "25-29ft", value: player["25_29_ft_fgpct"], fga: +player["fga_25_29_ft"], fgm: +player["25_29_ft_fgm"] }
             ];
 
             const radarScaleFGP = d3.scaleLinear()
@@ -437,7 +454,7 @@
                 .attr("class", "radar-tick-label")
                 .attr("x", 192 * Math.cos(angle))
                 .attr("y", 192 * Math.sin(angle))
-                .text(`${d.fgm.toFixed(1)}`)
+                .text(`${d.fgm.toFixed(2)}`)
                 .attr("fill", "blue");
             });
 
@@ -469,7 +486,11 @@
 
             // Update player info
             d3.select("#player-info")
-              .html(`<strong>${player.player}</strong><br>${player.team}`);
+              // .html(`<strong>${player.player}</strong><br>${player.team}`);
+              .html(`
+      <strong>${player.player}</strong> | ${player.team} | ${player.Pos}<br>
+      PPG: ${player.PTS}
+    `);
           }
         }
       }).catch(error => {
