@@ -1,0 +1,472 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NBA Player Shooting Proficiency By Shot Range</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 0;
+      padding: 0;
+      background: #f4f4f4;
+    }
+
+    .container {
+      width: 90%;
+      margin: 0 auto;
+      padding: 20px;
+      display: flex;
+      flex-wrap: wrap;
+    }
+
+    .vis_container {
+      display: flex;
+      justify-content: space-between;
+    }
+
+    h1 {
+      text-align: center;
+      color: #333;
+      width: 100%;
+    }
+
+    .filters {
+      margin-bottom: 20px;
+      display: flex;
+      gap: 20px;
+      align-items: center;
+    }
+
+    #line-chart,
+    #radar-container {
+      margin-top: 20px;
+      background: #fff;
+      padding: 20px;
+      border-radius: 8px;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    }
+
+    #line-chart {
+      width: 60%;
+    }
+
+    #radar-container {
+      width: 35%;
+      margin-left: 20px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    .line {
+      fill: none;
+      stroke: #ccc;
+      stroke-width: 2;
+      opacity: 0.3;
+      transition: opacity 0.2s ease-in-out;
+    }
+
+    .highlight {
+      stroke: orange;
+      stroke-width: 3;
+      opacity: 1;
+    }
+
+    .radar-grid {
+      stroke: #ccc;
+      stroke-width: 0.5;
+      fill: none;
+    }
+
+    .radar-label {
+      font-size: 12px;
+      text-anchor: middle;
+    }
+
+    .radar-area {
+      fill: rgba(0, 0, 255, 0.2);
+      stroke: none;
+    }
+
+    .radar-tick-label {
+      font-size: 10px;
+      text-anchor: middle;
+    }
+
+    .player-info {
+      margin-top: 20px;
+      font-size: 18px;
+      font-weight: bold;
+      text-align: center;
+    }
+
+    .legend {
+      display: flex;
+      gap: 10px;
+      margin-top: 10px;
+    }
+
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    .legend-color {
+      width: 15px;
+      height: 15px;
+      border-radius: 50%;
+    }
+
+    .legend-text {
+      font-size: 12px;
+    }
+
+    .search-bar {
+      margin-left: 20px;
+      margin-bottom: 20px;
+    }
+
+    .search-bar input {
+      padding: 5px;
+      font-size: 14px;
+      width: 200px;
+    }
+  </style>
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+</head>
+
+<body>
+  <div class="container">
+    <h1>NBA Player Shooting Proficiency By Shot Range</h1>
+    <div class="filters">
+      <label for="team-filter">Team:</label>
+      <select id="team-filter">
+        <option value="All">All Teams</option>
+      </select>
+
+      <label for="fga-slider">Minimum Total FGA:</label>
+      <input type="range" id="fga-slider" min="0" max="21" value="5">
+      <span id="fga-value">5</span>
+    </div>
+    <div class="search-bar">
+      <label for="player-search">Search Player:</label>
+      <input type="text" id="player-search" placeholder="Enter player name">
+    </div>
+    <div class="vis_container">
+      <div id="line-chart"></div>
+      <div id="radar-container">
+        <div id="radar-chart"></div>
+        <div id="player-info" class="player-info"></div>
+        <!-- Radar Chart Legend -->
+        <div class="legend">
+          <div class="legend-item">
+            <div class="legend-color" style="background-color: blue;"></div>
+            <div class="legend-text">Field Goals Made (FGM)</div>
+          </div>
+          <div class="legend-item">
+            <div class="legend-color" style="background-color: orange;"></div>
+            <div class="legend-text">Field Goal Percentage (FGP)</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <script>
+    function createVisualizations() {
+      const margin = { top: 20, right: 30, bottom: 60, left: 60 };
+      const width = 800 - margin.left - margin.right;
+      const height = 400 - margin.top - margin.bottom;
+
+      const lineSvg = d3.select("#line-chart")
+        .append("svg")
+        .attr("width", width + margin.left + margin.right)
+        .attr("height", height + margin.top + margin.bottom)
+        .append("g")
+        .attr("transform", `translate(${margin.left},${margin.top})`);
+
+      const radarSvg = d3.select("#radar-chart")
+        .append("svg")
+        .attr("width", 400)
+        .attr("height", 400)
+        .append("g")
+        .attr("transform", `translate(200,200)`);
+
+      d3.csv("static/nba_shooting_stats.csv").then(data => {
+        console.log("Data loaded successfully:", data);
+
+        data.forEach(d => {
+          d.lt_5_ft_fgpct = +d.lt_5_ft_fgpct;
+          d["5_9_ft_fgpct"] = +d["5_9_ft_fgpct"];
+          d["10_14_ft_fgpct"] = +d["10_14_ft_fgpct"];
+          d["15_19_ft_fgpct"] = +d["15_19_ft_fgpct"];
+          d["20_24_ft_fgpct"] = +d["20_24_ft_fgpct"];
+          d["25_29_ft_fgpct"] = +d["25_29_ft_fgpct"];
+
+          d.total_fga = +d.lt_5_ft_fga + +d["5_9_ft_fga"] + +d["10_14_ft_fga"] + +d["15_19_ft_fga"] + +d["20_24_ft_fga"] + +d["25_29_ft_fga"];
+        });
+
+        const teams = [...new Set(data.map(d => d.team))].sort();
+        const teamFilter = d3.select("#team-filter");
+        teams.forEach(team => {
+          teamFilter.append("option").attr("value", team).text(team);
+        });
+
+        const fgaSlider = d3.select("#fga-slider");
+        const fgaValue = d3.select("#fga-value");
+
+        fgaSlider.on("input", function () {
+          fgaValue.text(this.value);
+          updateVisualizations();
+        });
+
+        teamFilter.on("change", updateVisualizations);
+
+        const playerSearch = d3.select("#player-search");
+        playerSearch.on("input", updateVisualizations);
+
+        let lockedPlayer = null; // Track the locked player
+
+        updateVisualizations();
+
+        function updateVisualizations() {
+          const selectedTeam = teamFilter.property("value");
+          const minFGA = +fgaSlider.property("value");
+          const searchQuery = playerSearch.property("value").toLowerCase();
+
+          const filteredData = data.filter(d => {
+            const matchesTeam = selectedTeam === "All" || d.team === selectedTeam;
+            const matchesFGA = d.total_fga >= minFGA;
+            const matchesPlayer = d.player.toLowerCase().includes(searchQuery);
+            return matchesTeam && matchesFGA && matchesPlayer;
+          });
+
+          console.log("Filtered data:", filteredData);
+
+          lineSvg.selectAll("*").remove();
+          radarSvg.selectAll("*").remove();
+
+          const x = d3.scalePoint()
+            .domain(["lt_5_ft", "5_9_ft", "10_14_ft", "15_19_ft", "20_24_ft", "25_29_ft"])
+            .range([0, width])
+            .padding(0.5);
+
+          const y = d3.scaleLinear()
+            .domain([0, 100])
+            .range([height, 0]);
+
+          // X axis with custom labels
+          lineSvg.append("g")
+            .attr("transform", `translate(0,${height})`)
+            .call(d3.axisBottom(x).tickFormat(d => {
+              const labels = {
+                "lt_5_ft": "<5",
+                "5_9_ft": "5-9",
+                "10_14_ft": "10-14",
+                "15_19_ft": "15-19",
+                "20_24_ft": "20-24",
+                "25_29_ft": "25-29"
+              };
+              return labels[d];
+            }))
+            .append("text")
+            .attr("x", width / 2)
+            .attr("y", margin.bottom - 10)
+            .attr("fill", "black")
+            .style("text-anchor", "middle")
+            .text("Shot Range (Feet)");
+
+          // Y axis with percentage labels
+          lineSvg.append("g")
+            .call(d3.axisLeft(y).tickFormat(d => `${d}%`))
+            .append("text")
+            .attr("transform", "rotate(-90)")
+            .attr("y", -margin.left + 20)
+            .attr("x", -height / 2)
+            .attr("fill", "black")
+            .style("text-anchor", "middle")
+            .text("Field Goal Percentage (%)");
+
+          const line = d3.line()
+            .x((d, i) => x(["lt_5_ft", "5_9_ft", "10_14_ft", "15_19_ft", "20_24_ft", "25_29_ft"][i]))
+            .y(d => y(d));
+
+          const lines = lineSvg.selectAll(".line")
+            .data(filteredData)
+            .enter()
+            .append("path")
+            .attr("class", "line")
+            .attr("d", d => line([
+              d.lt_5_ft_fgpct,
+              d["5_9_ft_fgpct"],
+              d["10_14_ft_fgpct"],
+              d["15_19_ft_fgpct"],
+              d["20_24_ft_fgpct"],
+              d["25_29_ft_fgpct"]
+            ]))
+            .on("mouseover", function (event, d) {
+              // Always allow hovering, even if a player is locked
+              d3.select(this).classed("highlight", true).raise();
+              updateRadarChart(d);
+              lines.style("opacity", 0.1);
+              d3.select(this).style("opacity", 1);
+            })
+            .on("mouseout", function () {
+              // If no player is locked, reset the opacity
+              if (!lockedPlayer) {
+                d3.select(this).classed("highlight", false);
+                lines.style("opacity", 0.3);
+              } else {
+                // If a player is locked, keep their line highlighted
+                lines.classed("highlight", false);
+                d3.select(`.line[data-id="${lockedPlayer.player}"]`).classed("highlight", true);
+              }
+            })
+            .on("click", function (event, d) {
+              if (lockedPlayer === d) {
+                // Unlock if the same player is clicked again
+                lockedPlayer = null;
+                lines.classed("highlight", false);
+                lines.style("opacity", 0.3);
+                d3.select("#player-info").html(""); // Clear player info
+              } else {
+                // Lock the clicked player
+                lockedPlayer = d;
+                lines.classed("highlight", false);
+                d3.select(this).classed("highlight", true).raise();
+                updateRadarChart(d);
+                lines.style("opacity", 0.1);
+                d3.select(this).style("opacity", 1);
+              }
+            })
+            .attr("data-id", d => d.player); // Add a data-id attribute for easy selection
+
+          function updateRadarChart(player) {
+            radarSvg.selectAll("*").remove();
+
+            const radarData = [
+              { axis: "<5ft", value: player.lt_5_ft_fgpct, fgm: +player.lt_5_ft_fgm },
+              { axis: "5-9ft", value: player["5_9_ft_fgpct"], fgm: +player["5_9_ft_fgm"] },
+              { axis: "10-14ft", value: player["10_14_ft_fgpct"], fgm: +player["10_14_ft_fgm"] },
+              { axis: "15-19ft", value: player["15_19_ft_fgpct"], fgm: +player["15_19_ft_fgm"] },
+              { axis: "20-24ft", value: player["20_24_ft_fgpct"], fgm: +player["20_24_ft_fgm"] },
+              { axis: "25-29ft", value: player["25_29_ft_fgpct"], fgm: +player["25_29_ft_fgm"] }
+            ];
+
+            const radarScaleFGP = d3.scaleLinear()
+              .domain([0, 100])
+              .range([0, 150]);
+
+            const maxFGM = d3.max(radarData, d => d.fgm);
+            const radarScaleFGM = d3.scaleLinear()
+              .domain([0, Math.ceil(maxFGM)]) // Scale FGM rings by 1.0 increments
+              .range([0, 150]);
+
+            // Double the number of rings (from 5 to 10)
+            const levels = 10;
+            const incrementFGP = 100 / levels; // Increment for FGP
+            const incrementFGM = Math.ceil(maxFGM) / levels; // Increment for FGM
+
+            for (let i = 0; i < levels - 1; i++) { // Remove the outermost ring
+              const level = (i + 1) * (150 / levels);
+              radarSvg.append("circle")
+                .attr("class", "radar-grid")
+                .attr("r", level)
+                .attr("cx", 0)
+                .attr("cy", 0);
+
+              // Add FGP (orange) and FGM (blue) labels for every other ring
+              if (i % 2 === 0) { // Only show labels for every other ring
+                radarSvg.append("text")
+                  .attr("class", "radar-tick-label")
+                  .attr("x", level + 5)
+                  .attr("y", 0)
+                  .text(`${((i + 1) * incrementFGP).toFixed(0)}%`)
+                  .attr("fill", "orange");
+
+                radarSvg.append("text")
+                  .attr("class", "radar-tick-label")
+                  .attr("x", level + 5)
+                  .attr("y", 15)
+                  .text(`${((i + 1) * incrementFGM).toFixed(0)}`) // FGM increments
+                  .attr("fill", "blue");
+              }
+            }
+
+            radarData.forEach((d, i) => {
+              const angle = (Math.PI * 2 / radarData.length * i) - (Math.PI / 2);
+              radarSvg.append("line")
+                .attr("class", "radar-grid")
+                .attr("x1", 0)
+                .attr("y1", 0)
+                .attr("x2", 150 * Math.cos(angle))
+                .attr("y2", 150 * Math.sin(angle));
+            });
+
+            radarData.forEach((d, i) => {
+              const angle = (Math.PI * 2 / radarData.length * i) - (Math.PI / 2);
+              radarSvg.append("text")
+                .attr("class", "radar-label")
+                .attr("x", 160 * Math.cos(angle))
+                .attr("y", 160 * Math.sin(angle))
+                .text(d.axis);
+
+              // Add colored numbers at the periphery for FGP and FGM
+              radarSvg.append("text")
+                .attr("class", "radar-tick-label")
+                .attr("x", 180 * Math.cos(angle))
+                .attr("y", 180 * Math.sin(angle))
+                .text(`${d.value.toFixed(1)}%`)
+                .attr("fill", "orange");
+
+              radarSvg.append("text")
+                .attr("class", "radar-tick-label")
+                .attr("x", 192 * Math.cos(angle))
+                .attr("y", 192 * Math.sin(angle))
+                .text(`${d.fgm.toFixed(1)}`)
+                .attr("fill", "blue");
+            });
+
+            const radarArea = d3.areaRadial()
+              .angle((d, i) => (Math.PI * 2 / radarData.length * i))
+              .innerRadius(0)
+              .outerRadius(d => radarScaleFGM(d.fgm))
+              .curve(d3.curveCardinalClosed);
+
+            radarSvg.append("path")
+              .datum(radarData)
+              .attr("class", "radar-area")
+              .attr("d", radarArea)
+              .attr("fill", "rgba(0, 0, 255, 0.2)")
+              .attr("stroke", "none");
+
+            const radarLineFGP = d3.lineRadial()
+              .angle((d, i) => (Math.PI * 2 / radarData.length * i))
+              .radius(d => radarScaleFGP(d.value))
+              .curve(d3.curveCardinalClosed);
+
+            radarSvg.append("path")
+              .datum(radarData)
+              .attr("class", "radar-line-fgp")
+              .attr("d", radarLineFGP)
+              .attr("fill", "rgba(255, 165, 0, 0.2)")
+              .attr("stroke", "none")
+              .attr("stroke-width", 2);
+
+            // Update player info
+            d3.select("#player-info")
+              .html(`<strong>${player.player}</strong><br>${player.team}`);
+          }
+        }
+      }).catch(error => {
+        console.error("Error loading the CSV file:", error);
+      });
+    }
+
+    createVisualizations();
+  </script>
+</body>
+
+</html>
