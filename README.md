@@ -1,4 +1,4 @@
-# info4310-hw2
+# nba_shooting_proficiency
 
 ## Vis Ideas:
 - Line graph for all players, but can mouse over or select player via filter
